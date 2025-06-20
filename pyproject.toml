@@ -1,0 +1,108 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "imsoetl"
+dynamic = ["version"]
+description = "I'm so ETL - An agentic data engineering platform using Generative AI"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "IMSOETL Team"}
+]
+keywords = ["etl", "data-engineering", "ai", "agents", "automation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "pydantic>=2.0.0",
+    "sqlalchemy>=2.0.0",
+    "asyncio-mqtt>=0.16.0",
+    "httpx>=0.25.0",
+    "python-multipart>=0.0.6",
+    "structlog>=23.0.0",
+    "typer>=0.9.0",
+    "google-generativeai>=0.3.0",
+    "openai>=1.0.0",
+    "langchain>=0.1.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "redis>=5.0.0",
+    "celery>=5.3.0",
+    "aiokafka>=0.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+]
+connectors = [
+    "psycopg2-binary>=2.9.0",
+    "pymongo>=4.0.0",
+    "snowflake-connector-python>=3.0.0",
+    "mysql-connector-python>=8.0.0",
+    "boto3>=1.26.0",
+    "azure-storage-blob>=12.0.0",
+    "google-cloud-storage>=2.10.0",
+]
+
+[project.scripts]
+imsoetl = "imsoetl.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/koshishtiwari/IMSOETL"
+Repository = "https://github.com/koshishtiwari/IMSOETL"
+Documentation = "https://github.com/koshishtiwari/IMSOETL#readme"
+Issues = "https://github.com/koshishtiwari/IMSOETL/issues"
+
+[tool.setuptools_scm]
+write_to = "src/imsoetl/_version.py"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ['py39']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --cov=imsoetl --cov-report=html --cov-report=term-missing"
+asyncio_mode = "auto"
