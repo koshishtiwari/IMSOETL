@@ -1,0 +1,139 @@
+# IMSOETL Configuration File
+
+# Project settings
+project:
+  name: "IMSOETL"
+  version: "0.1.0"
+  description: "I'm so ETL - Agentic Data Engineering Platform"
+
+# Agent Configuration
+agents:
+  orchestrator:
+    enabled: true
+    config:
+      max_concurrent_sessions: 10
+      session_timeout: 3600  # seconds
+      
+  discovery:
+    enabled: true
+    config:
+      connection_timeout: 30
+      max_parallel_discoveries: 5
+      
+  schema:
+    enabled: true
+    config:
+      compatibility_threshold: 0.7
+      auto_mapping: true
+      
+  transformation:
+    enabled: true
+    config:
+      max_transformation_complexity: 10
+      
+  quality:
+    enabled: true
+    config:
+      quality_threshold: 0.8
+      auto_fix_issues: false
+      
+  execution:
+    enabled: true
+    config:
+      max_parallel_jobs: 3
+      job_timeout: 7200  # seconds
+      
+  monitoring:
+    enabled: true
+    config:
+      metrics_retention_days: 30
+      alert_channels: ["email", "slack"]
+
+# Data Source Configurations
+data_sources:
+  mysql_default:
+    type: "mysql"
+    host: "localhost"
+    port: 3306
+    # credentials should be set via environment variables
+    # MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
+    
+  postgres_default:
+    type: "postgres"
+    host: "localhost"
+    port: 5432
+    # credentials via environment variables
+    # POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATABASE
+    
+  snowflake_default:
+    type: "snowflake"
+    # credentials via environment variables
+    # SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD
+    # SNOWFLAKE_WAREHOUSE, SNOWFLAKE_DATABASE, SNOWFLAKE_SCHEMA
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "structured"
+  handlers:
+    - type: "console"
+      level: "INFO"
+    - type: "file"
+      level: "DEBUG"
+      filename: "logs/imsoetl.log"
+      max_size: "10MB"
+      backup_count: 5
+
+# AI Model Configuration
+ai_models:
+  primary:
+    provider: "gemini"
+    model: "gemini-pro"
+    # API key via environment variable: GEMINI_API_KEY
+    
+  fallback:
+    provider: "ollama"
+    model: "gemma3:4b"
+    endpoint: "http://localhost:11434"
+
+# Pipeline Configuration
+pipelines:
+  default_batch_size: 10000
+  max_retries: 3
+  retry_delay: 60  # seconds
+  checkpoint_frequency: 1000  # records
+
+# Security Configuration
+security:
+  encryption:
+    enabled: true
+    algorithm: "AES-256"
+  
+  authentication:
+    required: true
+    method: "api_key"  # or "oauth", "jwt"
+  
+  audit_logging:
+    enabled: true
+    retention_days: 90
+
+# Performance Configuration
+performance:
+  worker_threads: 4
+  memory_limit: "2GB"
+  disk_cache_size: "1GB"
+  
+# Monitoring and Alerts
+monitoring:
+  metrics:
+    enabled: true
+    collection_interval: 60  # seconds
+    
+  alerts:
+    enabled: true
+    error_threshold: 5  # errors per minute
+    latency_threshold: 5000  # milliseconds
+    
+  health_checks:
+    enabled: true
+    interval: 30  # seconds
