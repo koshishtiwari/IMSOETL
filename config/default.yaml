@@ -84,7 +84,21 @@ logging:
       max_size: "10MB"
       backup_count: 5
 
-# AI Model Configuration
+# LLM Configuration
+llm:
+  ollama:
+    enabled: true
+    base_url: "http://localhost:11434"
+    model: "gemma3:4b"
+    timeout: 30
+    
+  gemini:
+    enabled: true
+    model: "gemini-1.5-flash"
+    # API key via environment variable: GEMINI_API_KEY
+    api_key: "${GEMINI_API_KEY}"
+
+# Legacy AI Model Configuration (deprecated - use llm section above)
 ai_models:
   primary:
     provider: "gemini"
@@ -137,3 +151,40 @@ monitoring:
   health_checks:
     enabled: true
     interval: 30  # seconds
+
+# Execution Engine Configuration
+execution_engines:
+  # Engine selection strategy
+  selection_strategy: "auto"  # auto, performance, memory_efficient, distributed, manual
+  
+  # Primary engine preference
+  primary_engine: "pandas"  # pandas, duckdb, spark
+  
+  # Data size thresholds for automatic engine selection
+  small_data_threshold: 10000    # rows - use Pandas
+  medium_data_threshold: 1000000 # rows - use DuckDB
+  large_data_threshold: 10000000 # rows - use Spark
+  
+  # Engine-specific configurations
+  pandas:
+    enabled: true
+    chunk_size: 10000
+    memory_map: true
+    
+  duckdb:
+    enabled: true
+    memory_limit: "1GB"
+    threads: 4
+    temp_directory: "/tmp/duckdb"
+    
+  spark:
+    enabled: false  # Enable when Spark cluster is available
+    app_name: "IMSOETL-Spark"
+    master: "local[*]"
+    driver_memory: "2g"
+    executor_memory: "1g"
+    
+  polars:
+    enabled: false  # Future enhancement
+    streaming: true
+    lazy: true

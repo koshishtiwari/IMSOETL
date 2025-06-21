@@ -1,0 +1,66 @@
+{
+  "demo_timestamp": "2025-06-21T01:39:54.860946+00:00",
+  "agents_status": {
+    "orchestrator": {
+      "type": "orchestrator",
+      "status": "idle",
+      "id": "orchestrator_1"
+    },
+    "discovery": {
+      "type": "discovery",
+      "status": "idle",
+      "id": "discovery_1"
+    },
+    "schema": {
+      "type": "schema",
+      "status": "idle",
+      "id": "schema_1"
+    },
+    "transformation": {
+      "type": "transformation",
+      "status": "idle",
+      "id": "transformation_1"
+    },
+    "quality": {
+      "type": "quality",
+      "status": "idle",
+      "id": "quality_1"
+    },
+    "execution": {
+      "type": "execution",
+      "status": "idle",
+      "id": "execution_1"
+    },
+    "monitoring": {
+      "type": "monitoring",
+      "status": "idle",
+      "id": "monitoring_1"
+    }
+  },
+  "communication_stats": {
+    "total_agents": 7,
+    "agent_ids": [
+      "orchestrator_1",
+      "discovery_1",
+      "schema_1",
+      "transformation_1",
+      "quality_1",
+      "execution_1",
+      "monitoring_1"
+    ],
+    "message_queue_size": 0,
+    "running": true,
+    "shared_state_keys": 0,
+    "active_locks": 0,
+    "recent_messages": 0
+  },
+  "database_connectivity": true,
+  "features_tested": [
+    "Natural Language Processing",
+    "Agent Communication",
+    "Database Connectivity",
+    "Schema Discovery",
+    "Quality Assessment",
+    "Workflow Orchestration"
+  ]
+}

@@ -2,11 +2,12 @@
 Execution Agent - Handles the execution of data pipelines and transformations.
 
 This agent is responsible for:
-- Executing data pipeline tasks
-- Managing execution environments
+- Executing data pipeline tasks using multiple engines
+- Managing execution environments (Pandas, DuckDB, Spark)
 - Coordinating with external systems
 - Handling execution status and monitoring
 - Managing parallel and distributed execution
+- Providing intelligent engine selection
 """
 
 import asyncio
@@ -20,6 +21,7 @@ import tempfile
 import os
 
 from ..core.base_agent import BaseAgent, AgentType
+from ..engines.manager import ExecutionEngineManager, ExecutionEngineType
 
 
 class ExecutionStatus(str, Enum):
@@ -173,6 +175,7 @@ class ExecutionAgent(BaseAgent):
         self.active_tasks: Dict[str, ExecutionTask] = {}
         self.active_pipelines: Dict[str, ExecutionPipeline] = {}
         self.execution_history: List[Dict[str, Any]] = []
+        self.execution_engine_manager: Optional[ExecutionEngineManager] = None
         self.supported_environments = {
             ExecutionEnvironment.LOCAL: self._execute_local,
             ExecutionEnvironment.DOCKER: self._execute_docker,
@@ -184,7 +187,18 @@ class ExecutionAgent(BaseAgent):
         """Initialize the execution agent."""
         await self._setup_execution_environments()
         await self._load_execution_templates()
+        await self._initialize_execution_engines()
         self.logger.info("ExecutionAgent initialized successfully")
+        
+    async def _initialize_execution_engines(self):
+        """Initialize the execution engine manager."""
+        try:
+            self.execution_engine_manager = ExecutionEngineManager(self.config)
+            await self.execution_engine_manager.initialize()
+            self.logger.info("ExecutionEngineManager initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize ExecutionEngineManager: {e}")
+            self.execution_engine_manager = None
         
     async def _setup_execution_environments(self):
         """Setup and validate execution environments."""
@@ -233,6 +247,54 @@ class ExecutionAgent(BaseAgent):
             }
         }
         
+    def _extract_table_name_from_sql(self, sql: str) -> Optional[str]:
+        """Extract table name from SQL query for parameter mapping.
+        
+        This method attempts to extract table names from common SQL patterns.
+        It's used to map source data files to table names in SQL queries.
+        """
+        if not sql or not isinstance(sql, str):
+            return None
+            
+        # Convert to lowercase for pattern matching
+        sql_lower = sql.lower().strip()
+        
+        # Common SQL patterns to extract table names
+        import re
+        
+        # Pattern for FROM clause: SELECT ... FROM table_name
+        from_pattern = r'\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)'
+        from_match = re.search(from_pattern, sql_lower)
+        if from_match:
+            return from_match.group(1)
+            
+        # Pattern for INSERT INTO: INSERT INTO table_name
+        insert_pattern = r'\binsert\s+into\s+([a-zA-Z_][a-zA-Z0-9_]*)'
+        insert_match = re.search(insert_pattern, sql_lower)
+        if insert_match:
+            return insert_match.group(1)
+            
+        # Pattern for UPDATE: UPDATE table_name SET
+        update_pattern = r'\bupdate\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+set'
+        update_match = re.search(update_pattern, sql_lower)
+        if update_match:
+            return update_match.group(1)
+            
+        # Pattern for DELETE FROM: DELETE FROM table_name
+        delete_pattern = r'\bdelete\s+from\s+([a-zA-Z_][a-zA-Z0-9_]*)'
+        delete_match = re.search(delete_pattern, sql_lower)
+        if delete_match:
+            return delete_match.group(1)
+            
+        # Pattern for JOIN clauses: ... JOIN table_name ON
+        join_pattern = r'\bjoin\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+on'
+        join_match = re.search(join_pattern, sql_lower)
+        if join_match:
+            return join_match.group(1)
+            
+        # If no patterns match, return None
+        return None
+        
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process a task assigned to this agent."""
         task_type = task.get("type")
@@ -269,10 +331,53 @@ class ExecutionAgent(BaseAgent):
         """Execute a single task."""
         task_config = task.get("task_config", {})
         
+        # Check if this is a direct data task call from orchestrator
+        if "type" in task_config and "data" in task_config:
+            try:
+                result = await self.execute_data_task(task_config)
+                return {
+                    "success": result.get("success", False),
+                    "data": result.get("data"),
+                    "execution_time": result.get("execution_time", 0),
+                    "rows_processed": result.get("rows_processed", 0),
+                    "error": result.get("error"),
+                    "agent": self.agent_id,
+                    "timestamp": datetime.now().isoformat()
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "agent": self.agent_id,
+                    "timestamp": datetime.now().isoformat()
+                }
+        
+        # Handle traditional execution tasks
+        task_type = task_config.get("task_type", "custom")
+        
+        # Handle data processing tasks using execution engines
+        if task_type in ["sql_query", "data_transformation", "data_load", "batch_processing"]:
+            try:
+                result = await self.execute_data_task(task_config)
+                return {
+                    "success": result.get("success", False),
+                    "data_result": result,
+                    "agent": self.agent_id,
+                    "timestamp": datetime.now().isoformat()
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "agent": self.agent_id,
+                    "timestamp": datetime.now().isoformat()
+                }
+        
+        # Handle traditional execution tasks
         execution_task = ExecutionTask(
             task_id=task_config.get("task_id", f"task_{datetime.now().timestamp()}"),
             task_name=task_config.get("task_name", "Unnamed Task"),
-            task_type=task_config.get("task_type", "custom"),
+            task_type=task_type,
             command=task_config.get("command", ""),
             environment=ExecutionEnvironment(task_config.get("environment", "local")),
             parameters=task_config.get("parameters", {})
@@ -764,3 +869,202 @@ class ExecutionAgent(BaseAgent):
             "retry_count": task.retry_count,
             "result": result
         }
+    
+    async def execute_data_task(self, task_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a data processing task using the execution engine manager."""
+        if not self.execution_engine_manager:
+            raise RuntimeError("ExecutionEngineManager not initialized")
+            
+        task_type = task_config.get("type", "")
+        data_config = task_config.get("data", {})
+        
+        try:
+            if task_type == "sql_query":
+                return await self._execute_sql_query(data_config)
+            elif task_type == "data_transformation":
+                return await self._execute_data_transformation(data_config)
+            elif task_type == "data_load":
+                return await self._execute_data_load(data_config)
+            elif task_type == "batch_processing":
+                return await self._execute_batch_processing(data_config)
+            else:
+                raise ValueError(f"Unsupported data task type: {task_type}")
+                
+        except Exception as e:
+            self.logger.error(f"Data task execution failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "task_type": task_type
+            }
+    
+    async def _execute_sql_query(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute SQL query using appropriate engine."""
+        if not self.execution_engine_manager:
+            raise RuntimeError("ExecutionEngineManager not initialized")
+            
+        query = config.get("query", "")
+        params = config.get("parameters", {}).copy()  # Copy to avoid modifying original
+        engine_hint = config.get("engine_hint")
+        source = config.get("source")
+        
+        # Convert string engine hint to enum
+        if isinstance(engine_hint, str):
+            try:
+                from ..engines.manager import ExecutionEngineType
+                engine_hint = ExecutionEngineType(engine_hint.lower())
+            except (ValueError, AttributeError):
+                self.logger.warning(f"Invalid engine hint: {engine_hint}, using default")
+                engine_hint = None
+        
+        self.logger.info(f"Executing SQL query: {query[:100]}...")
+        
+        # Handle source data - load it and add to params for the engine
+        if source:
+            if isinstance(source, str):
+                # If source is a file path, add it to params with a standard name
+                # The table name is extracted from the SQL or defaults to 'data'
+                table_name = self._extract_table_name_from_sql(query) or "data"
+                params[table_name] = source
+                self.logger.debug(f"Added source file to params: {table_name} = {source}")
+        
+        # Execute query using the engine manager
+        result = await self.execution_engine_manager.execute_sql(
+            sql=query,
+            params=params,
+            engine_hint=engine_hint
+        )
+        
+        return {
+            "success": result.success if result else False,
+            "data": result.data if result else None,
+            "metadata": result.metadata if result else {},
+            "execution_time": result.execution_time if result else 0,
+            "rows_processed": result.rows_processed if result else 0,
+            "error": result.error if result and not result.success else None
+        }
+    
+    async def _execute_data_transformation(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute data transformation using appropriate engine."""
+        if not self.execution_engine_manager:
+            raise RuntimeError("ExecutionEngineManager not initialized")
+            
+        source_data = config.get("source_data")
+        transformation_spec = config.get("transformation", {})
+        engine_hint = config.get("engine_hint")
+        
+        # Convert string engine hint to enum
+        if isinstance(engine_hint, str):
+            try:
+                from ..engines.manager import ExecutionEngineType
+                engine_hint = ExecutionEngineType(engine_hint.lower())
+            except (ValueError, AttributeError):
+                self.logger.warning(f"Invalid engine hint: {engine_hint}, using default")
+                engine_hint = None
+        
+        self.logger.info(f"Executing data transformation using execution engine manager")
+        
+        # Execute transformation using the engine manager
+        result = await self.execution_engine_manager.execute_transformation(
+            source_data=source_data,
+            transformation_spec=transformation_spec,
+            engine_hint=engine_hint
+        )
+        
+        return {
+            "success": result.success if result else False,
+            "data": result.data if result else None,
+            "metadata": result.metadata if result else {},
+            "execution_time": result.execution_time if result else 0,
+            "rows_processed": result.rows_processed if result else 0,
+            "error": result.error if result and not result.success else None
+        }
+    
+    async def _execute_data_load(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute data loading using appropriate engine."""
+        if not self.execution_engine_manager:
+            raise RuntimeError("ExecutionEngineManager not initialized")
+            
+        source_path = config.get("source", "")
+        format_type = config.get("format", "auto")
+        load_options = config.get("options", {})
+        
+        self.logger.info(f"Executing data load using execution engine manager")
+        
+        # Execute load using the engine manager
+        result = await self.execution_engine_manager.load_data(
+            source=source_path,
+            format_type=format_type,
+            options=load_options
+        )
+        
+        return {
+            "success": result.success if result else False,
+            "data": result.data if result else None,
+            "metadata": result.metadata if result else {},
+            "execution_time": result.execution_time if result else 0,
+            "rows_processed": result.rows_processed if result else 0,
+            "error": result.error if result and not result.success else None
+        }
+    
+    async def _execute_batch_processing(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute batch processing using appropriate engine."""
+        if not self.execution_engine_manager:
+            raise RuntimeError("ExecutionEngineManager not initialized")
+            
+        batch_config = config.get("batch", {})
+        data_source = config.get("source", {})
+        processing_steps = config.get("steps", [])
+        
+        self.logger.info(f"Executing batch processing using execution engine manager")
+        
+        # Execute batch processing steps
+        results = []
+        total_time = 0
+        total_rows = 0
+        
+        for i, step in enumerate(processing_steps):
+            step_name = step.get("name", f"step_{i}")
+            self.logger.info(f"Executing batch processing step: {step_name}")
+            
+            # For batch processing, we'll use data transformation
+            step_result = await self.execution_engine_manager.execute_transformation(
+                source_data=data_source,
+                transformation_spec=step,
+                engine_hint=batch_config.get("engine_hint")
+            )
+            
+            results.append({
+                "step": step_name,
+                "success": step_result.success if step_result else False,
+                "rows_processed": step_result.rows_processed if step_result else 0,
+                "execution_time": step_result.execution_time if step_result else 0,
+                "error": step_result.error if step_result and not step_result.success else None
+            })
+            
+            if step_result and step_result.success:
+                total_time += step_result.execution_time or 0
+                total_rows += step_result.rows_processed or 0
+                
+                # Update data source for next step if needed
+                if step_result.metadata and step_result.metadata.get("output_location"):
+                    data_source = {
+                        "type": "file",
+                        "path": step_result.metadata["output_location"]
+                    }
+            else:
+                # Stop processing on error
+                break
+        
+        return {
+            "success": all(r["success"] for r in results),
+            "steps_completed": len([r for r in results if r["success"]]),
+            "results": results,
+            "total_processing_time": total_time,
+            "total_rows_processed": total_rows
+        }
+    
+    async def start(self) -> None:
+        """Start the execution agent and initialize engines."""
+        await super().start()
+        await self.initialize()

@@ -5,7 +5,7 @@ import sys
 import traceback
 from functools import wraps
 from typing import Any, Callable, Dict, Optional, Union
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 
@@ -17,7 +17,7 @@ class IMSOETLError(Exception):
         self.message = message
         self.error_code = error_code or "GENERAL_ERROR"
         self.details = details or {}
-        self.timestamp = datetime.utcnow()
+        self.timestamp = datetime.now(timezone.utc)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert error to dictionary for logging/serialization."""
@@ -127,7 +127,7 @@ class StructuredFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as structured JSON."""
         log_data = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -223,14 +223,14 @@ def log_performance(operation_name: Optional[str] = None):
         
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             logger = logging.getLogger(func.__module__)
             
             logger.info(f"Starting operation: {op_name}")
             
             try:
                 result = await func(*args, **kwargs)
-                end_time = datetime.utcnow()
+                end_time = datetime.now(timezone.utc)
                 duration = (end_time - start_time).total_seconds()
                 
                 logger.info(
@@ -245,7 +245,7 @@ def log_performance(operation_name: Optional[str] = None):
                 return result
             
             except Exception as e:
-                end_time = datetime.utcnow()
+                end_time = datetime.now(timezone.utc)
                 duration = (end_time - start_time).total_seconds()
                 
                 logger.error(
@@ -261,14 +261,14 @@ def log_performance(operation_name: Optional[str] = None):
         
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             logger = logging.getLogger(func.__module__)
             
             logger.info(f"Starting operation: {op_name}")
             
             try:
                 result = func(*args, **kwargs)
-                end_time = datetime.utcnow()
+                end_time = datetime.now(timezone.utc)
                 duration = (end_time - start_time).total_seconds()
                 
                 logger.info(
@@ -283,7 +283,7 @@ def log_performance(operation_name: Optional[str] = None):
                 return result
             
             except Exception as e:
-                end_time = datetime.utcnow()
+                end_time = datetime.now(timezone.utc)
                 duration = (end_time - start_time).total_seconds()
                 
                 logger.error(

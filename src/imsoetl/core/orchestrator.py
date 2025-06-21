@@ -12,9 +12,10 @@ This agent is responsible for:
 import asyncio
 import re
 from typing import Any, Dict, List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .base_agent import BaseAgent, AgentType, AgentContext, Message
+from ..llm.manager import LLMManager
 
 
 class IntentParser:
@@ -139,7 +140,7 @@ class TaskPlanner:
     def create_execution_plan(cls, intent: Dict[str, Any]) -> Dict[str, Any]:
         """Create an execution plan from parsed intent."""
         plan = {
-            'plan_id': f"plan_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
+            'plan_id': f"plan_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
             'intent': intent,
             'phases': [],
             'estimated_duration': 0,
@@ -313,6 +314,7 @@ class OrchestratorAgent(BaseAgent):
         # Orchestrator-specific components
         self.intent_parser = IntentParser()
         self.task_planner = TaskPlanner()
+        self.llm_manager = None  # Will be initialized in initialize()
         
         # Active sessions and plans
         self.active_sessions: Dict[str, AgentContext] = {}
@@ -323,6 +325,21 @@ class OrchestratorAgent(BaseAgent):
         self.register_message_handlers()
         
         self.logger.info("Orchestrator Agent initialized")
+    
+    async def initialize_llm(self, config: Dict[str, Any]) -> bool:
+        """Initialize LLM manager with configuration."""
+        try:
+            self.llm_manager = LLMManager(config)
+            success = await self.llm_manager.initialize()
+            if success:
+                self.logger.info("LLM manager initialized successfully")
+                return True
+            else:
+                self.logger.warning("LLM manager initialization failed")
+                return False
+        except Exception as e:
+            self.logger.error(f"Failed to initialize LLM manager: {e}")
+            return False
     
     def register_message_handlers(self) -> None:
         """Register handlers for different message types."""
@@ -336,14 +353,30 @@ class OrchestratorAgent(BaseAgent):
     async def handle_user_intent(self, message: Message) -> None:
         """Handle user intent messages."""
         user_input = message.content.get("intent", "")
-        session_id = message.content.get("session_id", f"session_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}")
+        session_id = message.content.get("session_id", f"session_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}")
         
         self.logger.info(f"Processing user intent for session {session_id}: {user_input}")
         
         try:
-            # Parse intent
-            parsed_intent = self.intent_parser.parse_intent(user_input)
-            self.logger.info(f"Parsed intent: {parsed_intent}")
+            # Use LLM for enhanced intent parsing if available
+            parsed_intent = None
+            if self.llm_manager and self.llm_manager.get_available_providers():
+                try:
+                    llm_intent = await self.llm_manager.parse_intent(user_input)
+                    self.logger.info(f"LLM parsed intent: {llm_intent}")
+                    
+                    # Merge LLM results with traditional parsing
+                    traditional_intent = self.intent_parser.parse_intent(user_input)
+                    parsed_intent = self._merge_intent_results(traditional_intent, llm_intent)
+                    
+                except Exception as e:
+                    self.logger.warning(f"LLM intent parsing failed, falling back to traditional: {e}")
+                    parsed_intent = self.intent_parser.parse_intent(user_input)
+            else:
+                # Fallback to traditional intent parsing
+                parsed_intent = self.intent_parser.parse_intent(user_input)
+                
+            self.logger.info(f"Final parsed intent: {parsed_intent}")
             
             # Create execution plan
             execution_plan = self.task_planner.create_execution_plan(parsed_intent)
@@ -388,7 +421,7 @@ class OrchestratorAgent(BaseAgent):
                 "task_id": task_id,
                 "agent_id": message.sender_id,
                 "result": result,
-                "completed_at": datetime.utcnow()
+                "completed_at": datetime.now(timezone.utc)
             })
             
             await self._check_phase_completion(session_id)
@@ -415,7 +448,7 @@ class OrchestratorAgent(BaseAgent):
                 "task_id": task_id,
                 "agent_id": message.sender_id,
                 "error": error,
-                "failed_at": datetime.utcnow()
+                "failed_at": datetime.now(timezone.utc)
             })
             
             # Implement error recovery logic here
@@ -539,7 +572,7 @@ class OrchestratorAgent(BaseAgent):
         
         # Mark session as completed but keep for history
         context.shared_data["status"] = "completed"
-        context.shared_data["completed_at"] = datetime.utcnow()
+        context.shared_data["completed_at"] = datetime.now(timezone.utc)
     
     async def _handle_task_failure(self, session_id: str, task_id: str, error: str) -> None:
         """Handle task failure and implement recovery."""
@@ -568,10 +601,55 @@ class OrchestratorAgent(BaseAgent):
             content={"error": error_message}
         )
     
+    def _merge_intent_results(self, traditional_intent: Dict[str, Any], llm_intent: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge traditional and LLM intent parsing results."""
+        # Start with traditional parsing as base
+        merged = traditional_intent.copy()
+        
+        # Override with LLM results where available and valid
+        if llm_intent.get("intent") != "unknown" and llm_intent.get("intent") != "error":
+            merged["llm_intent"] = llm_intent.get("intent")
+            
+            # Merge source information
+            if llm_intent.get("source"):
+                if "llm_source" not in merged:
+                    merged["llm_source"] = llm_intent["source"]
+                    
+            # Merge target information  
+            if llm_intent.get("target"):
+                if "llm_target" not in merged:
+                    merged["llm_target"] = llm_intent["target"]
+                    
+            # Merge transformations
+            if llm_intent.get("transformations"):
+                merged["llm_transformations"] = llm_intent["transformations"]
+                
+            # Merge quality checks
+            if llm_intent.get("quality_checks"):
+                merged["llm_quality_checks"] = llm_intent["quality_checks"]
+                
+        return merged
+    
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Process a task assigned to the orchestrator."""
-        # The orchestrator mainly coordinates rather than processing tasks directly
-        return {"status": "delegated", "message": "Task delegated to appropriate agent"}
+        try:
+            task_type = task.get("type")
+            
+            if task_type == "execute_task":
+                # Handle direct SQL/pipeline execution from CLI
+                task_config = task.get("task_config", {})
+                return await self._execute_direct_task(task_config)
+            elif task_type == "execute_pipeline":
+                # Handle pipeline execution
+                pipeline_config = task.get("pipeline_config", {})
+                engine_hint = task.get("engine_hint")
+                return await self._execute_pipeline_task(pipeline_config, engine_hint)
+            else:
+                # The orchestrator mainly coordinates rather than processing tasks directly
+                return {"status": "delegated", "message": "Task delegated to appropriate agent"}
+                
+        except Exception as e:
+            return {"success": False, "error": str(e)}
     
     def get_session_status(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Get status of a specific session."""
@@ -595,3 +673,84 @@ class OrchestratorAgent(BaseAgent):
             if status:
                 sessions.append(status)
         return sessions
+    
+    async def _execute_direct_task(self, task_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a direct task (SQL query) via execution agent."""
+        try:
+            # Import here to avoid circular imports
+            from ..agents.execution import ExecutionAgent
+            
+            # Create execution agent
+            execution_agent = ExecutionAgent()
+            await execution_agent.start()
+            
+            # Get task type and parameters
+            task_type = task_config.get("type", "sql_query")
+            
+            if task_type == "sql_query":
+                # Prepare data config for SQL execution
+                data_config = {
+                    "query": task_config.get("query", ""),
+                    "parameters": task_config.get("parameters", {}),
+                    "engine_hint": task_config.get("engine_hint")
+                }
+                
+                # If source is provided, add it to parameters
+                source = task_config.get("source", {})
+                if source and source.get("path"):
+                    data_config["source"] = source["path"]
+                
+                # Execute via the data task method directly
+                result = await execution_agent.execute_data_task({
+                    "type": task_type,
+                    "data": data_config
+                })
+            else:
+                # Handle other task types
+                formatted_task = {
+                    "type": "execute_task", 
+                    "task_config": {
+                        "task_type": task_type,
+                        "task_id": f"cli_task_{datetime.now().timestamp()}",
+                        "task_name": f"CLI {task_type}"
+                    }
+                }
+                result = await execution_agent.process_task(formatted_task)
+            
+            # Stop the agent
+            await execution_agent.stop()
+            
+            return result
+            
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    async def _execute_pipeline_task(self, pipeline_config: Dict[str, Any], engine_hint: Optional[str] = None) -> Dict[str, Any]:
+        """Execute a pipeline task via execution agent."""
+        try:
+            # Import here to avoid circular imports
+            from ..agents.execution import ExecutionAgent
+            
+            # Create execution agent
+            execution_agent = ExecutionAgent()
+            await execution_agent.start()
+            
+            # Prepare pipeline execution task
+            task_config = {
+                "type": "execute_pipeline",
+                "pipeline": pipeline_config
+            }
+            
+            if engine_hint:
+                task_config["engine_hint"] = engine_hint
+            
+            # Execute the pipeline
+            result = await execution_agent.process_task(task_config)
+            
+            # Stop the agent
+            await execution_agent.stop()
+            
+            return result
+            
+        except Exception as e:
+            return {"success": False, "error": str(e)}

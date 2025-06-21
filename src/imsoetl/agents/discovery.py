@@ -11,7 +11,7 @@ This agent:
 import asyncio
 import json
 from typing import Any, Dict, List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..core.base_agent import BaseAgent, AgentType, Message
 from ..connectors import (
@@ -41,7 +41,7 @@ class DataSourceInfo:
         self.connection_string = connection_string
         self.tables = tables or []
         self.metadata = metadata or {}
-        self.discovered_at = datetime.utcnow()
+        self.discovered_at = datetime.now(timezone.utc)
         self.status = "unknown"
         self.error_message: Optional[str] = None
     
@@ -75,7 +75,7 @@ class TableInfo:
         self.columns = columns or []
         self.row_count = row_count
         self.size_mb = size_mb
-        self.discovered_at = datetime.utcnow()
+        self.discovered_at = datetime.now(timezone.utc)
         self.relationships = []
         self.indexes = []
         self.constraints = []
@@ -104,7 +104,7 @@ class DatabaseSourceConnector:
     async def connect_and_discover(source_config: Dict[str, Any]) -> DataSourceInfo:
         """Connect to real database and discover structure."""
         source_type = source_config.get("type", "unknown")
-        source_id = source_config.get("id", f"source_{datetime.utcnow().timestamp()}")
+        source_id = source_config.get("id", f"source_{datetime.now(timezone.utc).timestamp()}")
         
         info = DataSourceInfo(
             source_id=source_id,
@@ -177,7 +177,7 @@ class DatabaseSourceConnector:
     async def analyze_table(source_config: Dict[str, Any], table_name: str) -> TableInfo:
         """Analyze a specific table using real database connection."""
         source_type = source_config.get("type", "unknown")
-        source_id = source_config.get("id", f"source_{datetime.utcnow().timestamp()}")
+        source_id = source_config.get("id", f"source_{datetime.now(timezone.utc).timestamp()}")
         
         table_info = TableInfo(
             table_name=table_name,
@@ -243,7 +243,7 @@ class MockDataSourceConnector:
     async def connect_and_discover(source_config: Dict[str, Any]) -> DataSourceInfo:
         """Mock connection and discovery process."""
         source_type = source_config.get("type", "unknown")
-        source_id = source_config.get("id", f"source_{datetime.utcnow().timestamp()}")
+        source_id = source_config.get("id", f"source_{datetime.now(timezone.utc).timestamp()}")
         
         # Simulate connection delay
         await asyncio.sleep(1)

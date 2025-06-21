@@ -6,7 +6,7 @@ import asyncio
 import logging
 import uuid
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union, Callable, Awaitable
 
@@ -47,7 +47,7 @@ class Message:
         self.receiver_id = receiver_id
         self.message_type = message_type
         self.content = content
-        self.timestamp = datetime.utcnow()
+        self.timestamp = datetime.now(timezone.utc)
         self.correlation_id = correlation_id
         self.reply_to = reply_to
 
@@ -66,8 +66,8 @@ class AgentContext:
         self.user_intent = user_intent
         self.current_phase = current_phase
         self.shared_data = shared_data or {}
-        self.created_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.created_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
 
 
 class BaseAgent(ABC):
@@ -114,7 +114,7 @@ class BaseAgent(ABC):
             "messages_received": 0,
             "tasks_completed": 0,
             "errors": 0,
-            "started_at": datetime.utcnow()
+            "started_at": datetime.now(timezone.utc)
         }
         
         self.logger.info(f"Agent {self.name} initialized with config: {self.config}")
@@ -237,7 +237,7 @@ class BaseAgent(ABC):
     def update_context(self, context: AgentContext) -> None:
         """Update the agent's context."""
         self.context = context
-        context.updated_at = datetime.utcnow()
+        context.updated_at = datetime.now(timezone.utc)
         self.logger.debug(f"Context updated for session {context.session_id}")
     
     async def _message_loop(self) -> None:
@@ -323,7 +323,7 @@ class BaseAgent(ABC):
         return {
             **self.stats,
             "status": self.status.value,
-            "uptime": (datetime.utcnow() - self.stats["started_at"]).total_seconds()
+            "uptime": (datetime.now(timezone.utc) - self.stats["started_at"]).total_seconds()
         }
     
     def __repr__(self) -> str:

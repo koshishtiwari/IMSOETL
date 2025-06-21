@@ -11,7 +11,7 @@ This agent:
 
 import asyncio
 from typing import Any, Dict, List, Optional, Tuple, Set
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from enum import Enum
 
@@ -282,7 +282,7 @@ class SchemaMatcher:
             transformations=transformations,
             compatibility_score=compatibility_score,
             issues=issues,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
     
     @classmethod

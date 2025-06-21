@@ -6,6 +6,7 @@ This agent is responsible for:
 - Validating transformation logic
 - Optimizing transformation pipelines
 - Managing transformation templates and patterns
+- LLM-enhanced SQL generation and optimization
 """
 
 import asyncio
@@ -14,6 +15,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 from ..core.base_agent import BaseAgent, AgentType
+from ..llm.manager import LLMManager
 
 
 class TransformationAgent(BaseAgent):
@@ -23,6 +25,7 @@ class TransformationAgent(BaseAgent):
         super().__init__(agent_id, AgentType.TRANSFORMATION)
         self.transformation_templates = {}
         self.optimization_rules = []
+        self.llm_manager = None  # Will be initialized later
         self.supported_operations = [
             "filter", "select", "join", "aggregate", "pivot", "unpivot",
             "window", "rank", "sort", "group", "union", "case_when",
@@ -236,6 +239,105 @@ class TransformationAgent(BaseAgent):
                 self.logger.warning(f"Failed to generate {code_type} code: {e}")
                 
         return generated_code
+        
+    async def initialize_llm(self, config: Dict[str, Any]) -> bool:
+        """Initialize LLM manager for enhanced transformations."""
+        try:
+            self.llm_manager = LLMManager(config)
+            success = await self.llm_manager.initialize()
+            if success:
+                self.logger.info("LLM manager initialized for transformation agent")
+                return True
+            else:
+                self.logger.warning("LLM manager initialization failed")
+                return False
+        except Exception as e:
+            self.logger.error(f"Failed to initialize LLM manager: {e}")
+            return False
+            
+    async def generate_llm_enhanced_transformation(
+        self, 
+        source_schema: Dict[str, Any], 
+        target_schema: Dict[str, Any],
+        requirements: List[str]
+    ) -> Dict[str, Any]:
+        """Generate transformation using LLM for complex requirements."""
+        if not self.llm_manager:
+            return await self.generate_transformation_code({})
+            
+        try:
+            # Use LLM to generate SQL transformation
+            sql_code = await self.llm_manager.generate_sql_transformation(
+                source_schema, target_schema, requirements
+            )
+            
+            # Also get traditional generation for comparison
+            traditional_spec = await self.generate_transformation_spec(
+                {"requirements": requirements}, source_schema, target_schema
+            )
+            traditional_code = await self.generate_transformation_code(traditional_spec)
+            
+            return {
+                "llm_generated": {
+                    "sql": sql_code,
+                    "method": "llm",
+                    "confidence": "high"
+                },
+                "traditional_generated": traditional_code,
+                "recommendation": "llm" if len(sql_code.strip()) > 50 else "traditional",
+                "metadata": {
+                    "source_schema": source_schema,
+                    "target_schema": target_schema,
+                    "requirements": requirements,
+                    "generated_at": datetime.now().isoformat()
+                }
+            }
+            
+        except Exception as e:
+            self.logger.error(f"LLM-enhanced transformation failed: {e}")
+            # Fallback to traditional method
+            spec = await self.generate_transformation_spec(
+                {"requirements": requirements}, {}, {}
+            )
+            return await self.generate_transformation_code(spec)
+            
+    async def optimize_transformation_with_llm(self, sql_code: str, schema_info: Dict[str, Any]) -> str:
+        """Use LLM to optimize existing transformation SQL."""
+        if not self.llm_manager:
+            return sql_code
+            
+        try:
+            prompt = f"""
+Optimize the following SQL transformation code for better performance and readability:
+
+Original SQL:
+{sql_code}
+
+Schema Information:
+{schema_info}
+
+Please provide an optimized version that:
+1. Uses appropriate indexes if available
+2. Minimizes data movement
+3. Uses efficient joins and subqueries
+4. Follows SQL best practices
+
+Return only the optimized SQL code without explanations.
+"""
+            
+            optimized_sql = await self.llm_manager.generate(prompt)
+            
+            # Basic validation - check if it looks like SQL
+            if "SELECT" in optimized_sql.upper() or "WITH" in optimized_sql.upper():
+                self.logger.info("SQL optimization completed via LLM")
+                return optimized_sql.strip()
+            else:
+                self.logger.warning("LLM optimization didn't return valid SQL, using original")
+                return sql_code
+                
+        except Exception as e:
+            self.logger.error(f"LLM SQL optimization failed: {e}")
+            return sql_code
         
     async def _generate_sql_code(self, transformation_spec: Dict[str, Any]) -> str:
         """Generate SQL transformation code."""

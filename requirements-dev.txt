@@ -1,2 +1,0 @@
-# Development dependencies for easy pip install
--e .[dev,connectors]

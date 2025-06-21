@@ -896,6 +896,354 @@ def enhanced_demo() -> None:
         console.print(f"[red]❌ Demo error: {str(e)}[/red]")
 
 
+@app.command()
+def llm(
+    prompt: str = typer.Argument(..., help="Prompt to send to the LLM"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Configuration file path"),
+    provider: Optional[str] = typer.Option(None, "--provider", "-p", help="Specific LLM provider to use (ollama/gemini)")
+) -> None:
+    """Test LLM integration with a prompt."""
+    import asyncio
+    import json
+    from .llm.manager import LLMManager
+    from .core.config import ConfigManager
+    
+    console.print(f"[bold cyan]Testing LLM with prompt:[/bold cyan] {prompt}")
+    
+    async def test_llm():
+        try:
+            # Load configuration
+            from .core.config import load_config
+            config_obj = load_config(config_path)
+            
+            # Create dict version for LLM manager
+            config = {
+                "llm": {
+                    "gemini": {
+                        "api_key": "AIzaSyCXeLTsst3w9hmPybXuCageQERBS6pQqBk"
+                    }
+                }
+            }
+            
+            # Initialize LLM manager
+            llm_manager = LLMManager(config)
+            success = await llm_manager.initialize()
+            
+            if not success:
+                console.print("[red]❌ Failed to initialize LLM manager[/red]")
+                return
+                
+            available_providers = llm_manager.get_available_providers()
+            primary_provider = llm_manager.get_primary_provider()
+            
+            console.print(f"[green]✅ Available providers:[/green] {', '.join(available_providers)}")
+            console.print(f"[green]✅ Primary provider:[/green] {primary_provider}")
+            
+            # Generate response
+            with console.status("[bold green]Generating response...", spinner="dots"):
+                response = await llm_manager.generate(prompt)
+                
+            console.print("\n[bold green]LLM Response:[/bold green]")
+            console.print(Panel(response, border_style="green"))
+            
+        except Exception as e:
+            console.print(f"[red]❌ LLM test failed: {str(e)}[/red]")
+            import traceback
+            console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
+    
+    asyncio.run(test_llm())
+
+
+@app.command()
+def llm_intent(
+    user_input: str = typer.Argument(..., help="User input to parse"),
+    config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Configuration file path")
+) -> None:
+    """Test LLM intent parsing."""
+    import asyncio
+    import json
+    from .llm.manager import LLMManager
+    from .core.config import ConfigManager
+    
+    console.print(f"[bold cyan]Parsing intent for:[/bold cyan] {user_input}")
+    
+    async def test_intent():
+        try:
+            # Load configuration
+            from .core.config import load_config
+            config_obj = load_config(config_path)
+            
+            # Create dict version for LLM manager
+            config = {
+                "llm": {
+                    "gemini": {
+                        "api_key": "AIzaSyCXeLTsst3w9hmPybXuCageQERBS6pQqBk"
+                    }
+                }
+            }
+            
+            # Initialize LLM manager
+            llm_manager = LLMManager(config)
+            success = await llm_manager.initialize()
+            
+            if not success:
+                console.print("[red]❌ Failed to initialize LLM manager[/red]")
+                return
+            
+            # Parse intent
+            with console.status("[bold green]Parsing intent...", spinner="dots"):
+                intent = await llm_manager.parse_intent(user_input)
+                
+            console.print("\n[bold green]Parsed Intent:[/bold green]")
+            console.print(Panel(json.dumps(intent, indent=2), border_style="green"))
+            
+        except Exception as e:
+            console.print(f"[red]❌ Intent parsing failed: {str(e)}[/red]")
+            import traceback
+            console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
+    
+    asyncio.run(test_intent())
+
+
+@app.command()
+def run_pipeline(
+    config_file: str = typer.Argument(..., help="Path to pipeline configuration file"),
+    engine: Optional[str] = typer.Option(None, "--engine", "-e", help="Force specific execution engine (pandas, duckdb, spark)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging")
+) -> None:
+    """Run a data pipeline with the specified configuration."""
+    setup_logging(verbose)
+    
+    async def execute_pipeline():
+        config_path = Path(config_file)
+        if not config_path.exists():
+            console.print(f"[red]❌ Configuration file not found: {config_file}[/red]")
+            return
+            
+        try:
+            import json
+            import yaml
+            
+            # Load pipeline configuration
+            with open(config_path, 'r') as f:
+                if config_path.suffix.lower() in ['.yaml', '.yml']:
+                    pipeline_config = yaml.safe_load(f)
+                else:
+                    pipeline_config = json.load(f)
+            
+            # Initialize orchestrator
+            orchestrator = OrchestratorAgent()
+            await orchestrator.start()
+            
+            # Prepare execution task
+            task_config = {
+                "type": "execute_pipeline",
+                "pipeline_config": pipeline_config
+            }
+            
+            if engine:
+                task_config["engine_hint"] = engine
+            
+            console.print(f"[yellow]🚀 Starting pipeline execution...[/yellow]")
+            console.print(f"Pipeline: {pipeline_config.get('name', 'Unnamed')}")
+            if engine:
+                console.print(f"Forced engine: {engine}")
+            
+            # Execute pipeline
+            result = await orchestrator.process_task(task_config)
+            
+            if result.get("success"):
+                console.print("[green]✅ Pipeline execution completed successfully![/green]")
+                
+                # Display results
+                pipeline_result = result.get("pipeline_result", {})
+                console.print("\n[bold blue]Execution Summary:[/bold blue]")
+                
+                table = Table(show_header=True, header_style="bold magenta")
+                table.add_column("Metric", style="cyan")
+                table.add_column("Value", style="white")
+                
+                table.add_row("Status", "✅ Success" if pipeline_result.get("success") else "❌ Failed")
+                table.add_row("Tasks Completed", str(pipeline_result.get("tasks_completed", 0)))
+                table.add_row("Total Duration", f"{pipeline_result.get('total_duration', 0):.2f}s")
+                table.add_row("Rows Processed", str(pipeline_result.get("total_rows", 0)))
+                
+                console.print(table)
+                
+            else:
+                console.print(f"[red]❌ Pipeline execution failed: {result.get('error', 'Unknown error')}[/red]")
+                
+        except Exception as e:
+            console.print(f"[red]❌ Pipeline execution failed: {str(e)}[/red]")
+            import traceback
+            console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
+    
+    asyncio.run(execute_pipeline())
+
+
+@app.command()
+def run_sql(
+    sql: str = typer.Argument(..., help="SQL query to execute"),
+    source: Optional[str] = typer.Option(None, "--source", "-s", help="Data source path"),
+    engine: Optional[str] = typer.Option(None, "--engine", "-e", help="Execution engine (pandas, duckdb, spark)"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file path"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging")
+) -> None:
+    """Execute a SQL query using the specified execution engine."""
+    setup_logging(verbose)
+    
+    async def execute_sql():
+        try:
+            # Initialize orchestrator
+            orchestrator = OrchestratorAgent()
+            await orchestrator.start()
+            
+            # Prepare SQL execution task
+            task_config = {
+                "type": "sql_query",
+                "query": sql,
+                "source": {"path": source} if source else {},
+                "parameters": {}
+            }
+            
+            if engine:
+                task_config["engine_hint"] = engine
+            
+            console.print(f"[yellow]🔍 Executing SQL query...[/yellow]")
+            console.print(f"Query: {sql[:100]}{'...' if len(sql) > 100 else ''}")
+            if source:
+                console.print(f"Source: {source}")
+            if engine:
+                console.print(f"Engine: {engine}")
+            
+            # Execute SQL through orchestrator
+            result = await orchestrator.process_task({
+                "type": "execute_task",
+                "task_config": task_config
+            })
+            
+            # Debug: print the full result structure
+            console.print(f"[yellow]Debug - Full result:[/yellow] {result}")
+            
+            if result.get("success"):
+                console.print("[green]✅ SQL execution completed successfully![/green]")
+                
+                # Display results - check multiple possible data fields
+                data = result.get("data") or result.get("data_result", {}).get("data")
+                console.print(f"[yellow]Debug - Data:[/yellow] {data}")
+                
+                if data is not None:
+                    console.print(f"\n[bold blue]Query Results:[/bold blue]")
+                    
+                    if isinstance(data, list) and len(data) > 0:
+                        # Display as table
+                        if isinstance(data[0], dict):
+                            table = Table(show_header=True, header_style="bold magenta")
+                            for col in data[0].keys():
+                                table.add_column(str(col), style="cyan")
+                            
+                            for row in data[:10]:  # Show first 10 rows
+                                table.add_row(*[str(v) for v in row.values()])
+                            
+                            console.print(table)
+                            
+                            if len(data) > 10:
+                                console.print(f"[yellow]... and {len(data) - 10} more rows[/yellow]")
+                        else:
+                            console.print(str(data))
+                    else:
+                        console.print("No data returned")
+                
+                # Save to file if requested
+                if output and data:
+                    import json
+                    with open(output, 'w') as f:
+                        json.dump(data, f, indent=2, default=str)
+                    console.print(f"[green]💾 Results saved to: {output}[/green]")
+                
+                # Display execution metrics
+                console.print("\n[bold blue]Execution Metrics:[/bold blue]")
+                table = Table(show_header=True, header_style="bold magenta")
+                table.add_column("Metric", style="cyan")
+                table.add_column("Value", style="white")
+                
+                table.add_row("Execution Time", f"{result.get('execution_time', 0):.3f}s")
+                table.add_row("Rows Processed", str(result.get('rows_processed', 0)))
+                
+                console.print(table)
+                
+            else:
+                console.print(f"[red]❌ SQL execution failed: {result.get('error', 'Unknown error')}[/red]")
+                
+        except Exception as e:
+            console.print(f"[red]❌ SQL execution failed: {str(e)}[/red]")
+            import traceback
+            console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
+    
+    asyncio.run(execute_sql())
+
+
+@app.command()
+def list_engines(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed engine information")
+) -> None:
+    """List available execution engines and their status."""
+    setup_logging(verbose)
+    
+    async def check_engines():
+        try:
+            import json
+            from .engines.manager import ExecutionEngineManager
+            from .core.config import load_config
+            
+            # Load configuration
+            config = load_config()
+            
+            # Convert config to dict for engine manager
+            config_dict = {
+                "execution_engines": getattr(config, "execution_engines", {}),
+                "temp_dir": getattr(config, "temp_dir", "/tmp/imsoetl"),
+                "data_dir": getattr(config, "data_dir", "./data")
+            }
+            
+            # Initialize engine manager
+            engine_manager = ExecutionEngineManager(config_dict)
+            await engine_manager.initialize()
+            
+            console.print("[bold blue]Available Execution Engines:[/bold blue]\n")
+            
+            table = Table(show_header=True, header_style="bold magenta")
+            table.add_column("Engine", style="cyan")
+            table.add_column("Status", style="white")
+            table.add_column("Type", style="yellow")
+            table.add_column("Capabilities", style="green")
+            
+            capabilities = engine_manager.get_engine_capabilities()
+            
+            for engine_type, info in capabilities.items():
+                status = "✅ Available" if info.get("available") else "❌ Unavailable"
+                engine_caps = ", ".join(info.get("capabilities", []))
+                
+                table.add_row(
+                    engine_type.title(),
+                    status,
+                    info.get("type", "Unknown"),
+                    engine_caps
+                )
+            
+            console.print(table)
+            
+            if verbose:
+                console.print("\n[bold blue]Engine Configuration:[/bold blue]")
+                engine_config = config_dict.get("execution_engines", {})
+                console.print(Panel(json.dumps(engine_config, indent=2), border_style="blue"))
+                
+        except Exception as e:
+            console.print(f"[red]❌ Failed to check engines: {str(e)}[/red]")
+    
+    asyncio.run(check_engines())
+
+
 def main() -> None:
     """Main CLI entry point."""
     app()

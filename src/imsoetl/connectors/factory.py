@@ -124,3 +124,11 @@ def create_mysql_connector(host: str, port: int, database: str,
         'mysql', host, port, database, username, password, **kwargs
     )
     return ConnectorFactory.create_connector('mysql', config)
+
+
+# Register available connectors
+if POSTGRESQL_AVAILABLE and PostgreSQLConnector:
+    ConnectorFactory.register_connector('postgresql', PostgreSQLConnector)
+    
+if MYSQL_AVAILABLE and MySQLConnector:
+    ConnectorFactory.register_connector('mysql', MySQLConnector)
