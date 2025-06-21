@@ -221,11 +221,10 @@ class TaskPlanner:
             },
             'agent': 'schema'
         })
-        
-        # Data quality assessment
+          # Data quality assessment
         tasks.append({
             'task_id': 'assess_quality',
-            'task_type': 'quality_assessment',
+            'task_type': 'assess_quality',  # Fixed: was 'quality_assessment'
             'description': 'Assess data quality and identify issues',
             'parameters': {
                 'sources': intent['entities']['sources'],
@@ -240,13 +239,12 @@ class TaskPlanner:
     def _create_design_tasks(cls, intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Create design phase tasks."""
         tasks = []
-        
-        # Transformation design
+          # Transformation design
         transform_ops = [op for op in intent['operations'] if op['type'] == 'transform']
         if transform_ops:
             tasks.append({
                 'task_id': 'design_transformations',
-                'task_type': 'transformation_design',
+                'task_type': 'generate_transformation',  # Fixed: was 'transformation_design'
                 'description': 'Design transformation logic',
                 'parameters': {
                     'operations': transform_ops,
@@ -254,11 +252,10 @@ class TaskPlanner:
                 },
                 'agent': 'transformation'
             })
-        
-        # Execution plan design
+          # Execution plan design
         tasks.append({
             'task_id': 'design_execution',
-            'task_type': 'execution_design',
+            'task_type': 'design_execution_plan',  # Fixed: was 'execution_design'
             'description': 'Create optimal execution plan',
             'parameters': {
                 'operations': intent['operations'],
@@ -283,12 +280,10 @@ class TaskPlanner:
                 'operations': intent['operations']
             },
             'agent': 'execution'
-        })
-        
-        # Monitoring setup
+        })        # Monitoring setup
         tasks.append({
             'task_id': 'setup_monitoring',
-            'task_type': 'monitoring_setup',
+            'task_type': 'health_check',  # Using existing handler
             'description': 'Set up monitoring and alerts',
             'parameters': {
                 'pipeline_id': 'TBD'  # Will be filled during execution

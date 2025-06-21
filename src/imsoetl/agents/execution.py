@@ -107,7 +107,7 @@ class ExecutionTask:
 class ExecutionPipeline:
     """Represents a pipeline of execution tasks."""
     
-    def __init__(
+    def __init(
         self,
         pipeline_id: str,
         pipeline_name: str,
@@ -334,8 +334,7 @@ class ExecutionAgent(BaseAgent):
         join_match = re.search(join_pattern, sql_lower)
         if join_match:
             return join_match.group(1)
-            
-        # If no patterns match, return None
+              # If no patterns match, return None
         return None
         
     async def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
@@ -347,6 +346,8 @@ class ExecutionAgent(BaseAgent):
                 return await self._handle_execute_task(task)
             elif task_type == "execute_pipeline":
                 return await self._handle_execute_pipeline(task)
+            elif task_type == "design_execution_plan":  # Added missing handler
+                return await self._handle_design_execution_plan(task)
             elif task_type == "cancel_execution":
                 return await self._handle_cancel_execution(task)
             elif task_type == "get_status":
@@ -510,6 +511,77 @@ class ExecutionAgent(BaseAgent):
             "agent": self.agent_id,
             "timestamp": datetime.now().isoformat()
         }
+        
+    async def _handle_design_execution_plan(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Design an execution plan based on operations and requirements."""
+        operations = task.get("parameters", {}).get("operations", [])
+        complexity = task.get("parameters", {}).get("complexity", "simple")
+        
+        # Create execution plan based on operations
+        execution_plan = {
+            "plan_id": f"exec_plan_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            "complexity": complexity,
+            "operations": operations,
+            "estimated_duration": self._estimate_execution_time(operations, complexity),
+            "resources_required": self._estimate_resources(operations),
+            "execution_steps": self._create_execution_steps(operations)
+        }
+        
+        return {
+            "success": True,
+            "execution_plan": execution_plan,
+            "agent": self.agent_id,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    def _estimate_execution_time(self, operations: List[Dict], complexity: str) -> int:
+        """Estimate execution time in seconds."""
+        base_time = {"simple": 30, "medium": 120, "complex": 300}
+        operation_time = len(operations) * 15
+        return base_time.get(complexity, 60) + operation_time
+    
+    def _estimate_resources(self, operations: List[Dict]) -> Dict[str, Any]:
+        """Estimate resource requirements."""
+        return {
+            "cpu_cores": min(4, max(1, len(operations))),
+            "memory_gb": min(8, max(1, len(operations) * 2)),
+            "disk_gb": 10,
+            "network_mbps": 100
+        }
+    
+    def _create_execution_steps(self, operations: List[Dict]) -> List[Dict[str, Any]]:
+        """Create detailed execution steps from operations."""
+        steps = []
+        
+        for i, operation in enumerate(operations):
+            op_type = operation.get("type", "unknown")
+            
+            if op_type == "extract":
+                steps.append({
+                    "step_id": f"extract_{i}",
+                    "step_name": f"Extract Data - Step {i+1}",
+                    "operation_type": "extract",
+                    "description": f"Extract data from source",
+                    "estimated_duration": 30
+                })
+            elif op_type == "transform":
+                steps.append({
+                    "step_id": f"transform_{i}",
+                    "step_name": f"Transform Data - Step {i+1}",
+                    "operation_type": "transform",
+                    "description": f"Apply transformations to data",
+                    "estimated_duration": 45
+                })
+            elif op_type == "load":
+                steps.append({
+                    "step_id": f"load_{i}",
+                    "step_name": f"Load Data - Step {i+1}",
+                    "operation_type": "load",
+                    "description": f"Load data to target",
+                    "estimated_duration": 20
+                })
+        
+        return steps
         
     async def execute_task(self, task: ExecutionTask) -> Dict[str, Any]:
         """Execute a single task."""
