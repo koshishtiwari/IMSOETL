@@ -80,8 +80,7 @@ class IntentParser:
         
         # Extract entities
         cls._extract_entities(user_input, intent)
-        
-        # Determine complexity
+          # Determine complexity
         intent['complexity'] = cls._determine_complexity(intent)
         
         return intent
@@ -89,6 +88,9 @@ class IntentParser:
     @classmethod
     def _extract_entities(cls, text: str, intent: Dict[str, Any]) -> None:
         """Extract entities like table names, column names, etc."""
+        # Time-related words that should not be treated as sources
+        time_words = {'last', 'next', 'previous', 'recent', 'current', 'past', 'future', 'today', 'yesterday', 'tomorrow'}
+        
         # Extract table/source names (simple heuristic)
         table_patterns = [
             r'(?:from|to|into|table|view)\s+([a-zA-Z_][a-zA-Z0-9_]*)',
@@ -97,7 +99,12 @@ class IntentParser:
         
         for pattern in table_patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
-            intent['entities']['sources'].extend(matches)
+            # Filter out time-related words and short words that are likely not table names
+            filtered_matches = [
+                match for match in matches 
+                if match.lower() not in time_words and len(match) > 2
+            ]
+            intent['entities']['sources'].extend(filtered_matches)
         
         # Extract column names
         column_patterns = [
