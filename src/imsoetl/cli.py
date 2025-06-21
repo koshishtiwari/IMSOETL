@@ -148,6 +148,89 @@ def status(
 
 
 @app.command()
+def test_agents(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging")
+) -> None:
+    """Test agent startup and registration."""
+    setup_logging(verbose)
+    
+    console.print(Panel.fit(
+        "[bold blue]IMSOETL Agent Test[/bold blue]\n"
+        "Testing automatic agent startup and registration.",
+        border_style="blue"
+    ))
+    
+    asyncio.run(test_agent_startup())
+
+
+async def test_agent_startup() -> None:
+    """Test the agent startup process."""
+    from .core.orchestrator import OrchestratorAgent
+    
+    console.print("[green]Starting orchestrator...[/green]")
+    
+    # Initialize orchestrator
+    orchestrator = OrchestratorAgent()
+    await orchestrator.start()
+    
+    console.print("[green]✓[/green] Orchestrator started successfully")
+    
+    try:
+        # Test agent startup
+        console.print("\n[cyan]Testing agent startup...[/cyan]")
+        
+        # Try to start required agents
+        required_agents = ["discovery", "schema", "quality", "transformation", "execution", "monitoring"]
+        
+        with console.status("[bold green]Starting agents..."):
+            agent_status = await orchestrator.agent_manager.ensure_agents_available(required_agents, orchestrator)
+        
+        # Display results
+        table = Table(title="Agent Status")
+        table.add_column("Agent", style="cyan", no_wrap=True)
+        table.add_column("Status", style="white")
+        table.add_column("Agent ID", style="dim")
+        
+        for agent_type, available in agent_status.items():
+            status_text = "[green]✓ Available[/green]" if available else "[red]✗ Failed[/red]"
+            agent_id = "N/A"
+            
+            if available and agent_type in orchestrator.agent_registry:
+                agent_id = orchestrator.agent_registry[agent_type]
+            
+            table.add_row(agent_type.title(), status_text, agent_id)
+        
+        console.print(table)
+        
+        # Show overall summary
+        successful = sum(1 for available in agent_status.values() if available)
+        total = len(agent_status)
+        
+        if successful == total:
+            console.print(f"\n[green]✓ All {total} agents started successfully![/green]")
+        else:
+            console.print(f"\n[yellow]⚠ {successful}/{total} agents started successfully[/yellow]")
+        
+        # Show detailed agent status
+        console.print("\n[cyan]Detailed agent status:[/cyan]")
+        detailed_status = orchestrator.agent_manager.get_agent_status()
+        
+        for agent_type, status_info in detailed_status.items():
+            status_emoji = "🟢" if status_info["running"] else "🔴"
+            registered_emoji = "✅" if status_info["registered"] else "❌"
+            
+            console.print(f"  {status_emoji} {agent_type}: {status_info['status']} {registered_emoji}")
+            
+    except Exception as e:
+        console.print(f"[red]Error testing agents: {e}[/red]")
+        
+    finally:
+        console.print("\n[yellow]Shutting down...[/yellow]")
+        await orchestrator.stop()
+        console.print("[green]✓[/green] Test completed!")
+
+
+@app.command()
 def validate(
     query: str = typer.Argument(..., help="ETL query to validate")
 ) -> None:
@@ -1281,28 +1364,6 @@ def health(
     except Exception as e:
         console.print(f"[red]Health check failed: {e}[/red]")
         raise typer.Exit(1)
-
-@app.command()
-def version() -> None:
-    """Show IMSOETL version information."""
-    try:
-        from . import __version__
-        console.print(f"[bold green]IMSOETL version: {__version__}[/bold green]")
-        
-        # Show key component versions
-        console.print("\n[bold]Key Dependencies:[/bold]")
-        deps = ["pandas", "duckdb", "fastapi", "pydantic"]
-        
-        for dep in deps:
-            try:
-                module = __import__(dep)
-                version = getattr(module, "__version__", "unknown")
-                console.print(f"  {dep}: {version}")
-            except ImportError:
-                console.print(f"  {dep}: [red]not installed[/red]")
-                
-    except Exception as e:
-        console.print(f"[red]Error getting version: {e}[/red]")
 
 @app.command()
 def main() -> None:

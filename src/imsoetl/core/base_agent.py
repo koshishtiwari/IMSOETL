@@ -96,6 +96,9 @@ class BaseAgent(ABC):
         self.status = AgentStatus.IDLE
         self.context: Optional[AgentContext] = None
         
+        # Message dispatcher (can be set externally)
+        self.message_dispatcher: Optional[Callable] = None
+        
         # Set up logging
         self.logger = logging.getLogger(f"imsoetl.{self.agent_type.value}.{self.agent_id}")
         
@@ -304,9 +307,12 @@ class BaseAgent(ABC):
     
     async def _dispatch_message(self, message: Message) -> None:
         """Dispatch a message to its intended recipient."""
-        # This would be implemented by the communication layer
-        # For now, just log the message
-        self.logger.debug(f"Message {message.id} dispatched")
+        if self.message_dispatcher:
+            # Use custom dispatcher if available
+            await self.message_dispatcher(message)
+        else:
+            # Default implementation - just log the message
+            self.logger.debug(f"Message {message.id} dispatched (no dispatcher configured)")
     
     async def _start_background_tasks(self) -> None:
         """Start any background tasks specific to this agent."""

@@ -51,12 +51,21 @@ agents:
 
 # Data Source Configurations
 data_sources:
+  mysql:
+    type: "mysql"
+    host: "${MYSQL_HOST:-localhost}"
+    port: "${MYSQL_PORT:-3306}"
+    database: "${MYSQL_DATABASE:-ecommerce}"
+    username: "${MYSQL_USER:-root}"
+    password: "${MYSQL_PASSWORD:-}"
+    
   mysql_default:
     type: "mysql"
-    host: "localhost"
-    port: 3306
-    # credentials should be set via environment variables
-    # MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
+    host: "${MYSQL_HOST:-localhost}"
+    port: "${MYSQL_PORT:-3306}"
+    database: "${MYSQL_DATABASE:-ecommerce}"
+    username: "${MYSQL_USER:-root}"
+    password: "${MYSQL_PASSWORD:-}"
     
   postgres_default:
     type: "postgres"

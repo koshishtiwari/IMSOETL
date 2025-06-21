@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 
 from .base_agent import BaseAgent, AgentType, AgentContext, Message
+from .agent_manager import AgentManager
 from ..llm.manager import LLMManager
 
 
@@ -315,6 +316,10 @@ class OrchestratorAgent(BaseAgent):
         self.intent_parser = IntentParser()
         self.task_planner = TaskPlanner()
         self.llm_manager = None  # Will be initialized in initialize()
+        self.agent_manager = AgentManager(orchestrator_id=agent_id, config=config)
+        
+        # Set orchestrator reference for message passing
+        self.agent_manager.set_orchestrator(self)
         
         # Active sessions and plans
         self.active_sessions: Dict[str, AgentContext] = {}
@@ -340,6 +345,23 @@ class OrchestratorAgent(BaseAgent):
         except Exception as e:
             self.logger.error(f"Failed to initialize LLM manager: {e}")
             return False
+    
+    async def stop(self) -> None:
+        """Stop the orchestrator and all managed agents."""
+        self.logger.info("Stopping orchestrator and all managed agents")
+        
+        try:
+            # Stop all managed agents
+            await self.agent_manager.stop_all_agents()
+            
+            # Call parent stop method
+            await super().stop()
+            
+            self.logger.info("Orchestrator stopped successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error stopping orchestrator: {e}")
+            raise
     
     def register_message_handlers(self) -> None:
         """Register handlers for different message types."""
@@ -489,7 +511,8 @@ class OrchestratorAgent(BaseAgent):
         else:
             status = {
                 "active_sessions": len(self.active_sessions),
-                "registered_agents": len(self.agent_registry)
+                "registered_agents": len(self.agent_registry),
+                "managed_agents": self.agent_manager.get_agent_status()
             }
         
         await self.send_message(
@@ -502,12 +525,39 @@ class OrchestratorAgent(BaseAgent):
         """Start executing an execution plan."""
         context = self.active_sessions[session_id]
         
-        # Start with the first phase
-        if execution_plan['phases']:
-            first_phase = execution_plan['phases'][0]
-            context.current_phase = first_phase['phase_id']
+        self.logger.info(f"Starting plan execution for session {session_id}, plan {execution_plan['plan_id']}")
+        
+        # Ensure required agents are started and registered
+        required_agents = execution_plan['agents_required']
+        self.logger.info(f"Ensuring required agents are available: {required_agents}")
+        
+        try:
+            # Start required agents
+            agent_status = await self.agent_manager.ensure_agents_available(required_agents, self)
             
-            await self._execute_phase_tasks(session_id, first_phase)
+            # Check if all required agents are available
+            failed_agents = [agent for agent, available in agent_status.items() if not available]
+            if failed_agents:
+                error_msg = f"Failed to start required agents: {failed_agents}"
+                self.logger.error(error_msg)
+                await self._send_error_response(session_id, error_msg)
+                return
+            
+            self.logger.info(f"All required agents are ready. Agent registry: {self.agent_registry}")
+            
+            # Start with the first phase
+            if execution_plan['phases']:
+                first_phase = execution_plan['phases'][0]
+                context.current_phase = first_phase['phase_id']
+                
+                await self._execute_phase_tasks(session_id, first_phase)
+            else:
+                self.logger.warning(f"No phases defined in execution plan {execution_plan['plan_id']}")
+                
+        except Exception as e:
+            error_msg = f"Error starting plan execution: {e}"
+            self.logger.error(error_msg)
+            await self._send_error_response(session_id, error_msg)
     
     async def _execute_phase_tasks(self, session_id: str, phase: Dict[str, Any]) -> None:
         """Execute all tasks in a phase."""
@@ -521,7 +571,9 @@ class OrchestratorAgent(BaseAgent):
             if agent_type in self.agent_registry:
                 agent_id = self.agent_registry[agent_type]
                 
-                await self.send_message(
+                # Create message
+                message = Message(
+                    sender_id=self.agent_id,
                     receiver_id=agent_id,
                     message_type="task_assignment",
                     content={
@@ -530,8 +582,64 @@ class OrchestratorAgent(BaseAgent):
                         "context": context.shared_data
                     }
                 )
+                
+                # Deliver message directly to the agent
+                await self._deliver_message_to_agent(agent_type, message)
             else:
                 self.logger.warning(f"Agent type {agent_type} not registered")
+    
+    async def _deliver_message_to_agent(self, agent_type_str: str, message: Message) -> None:
+        """Deliver a message directly to an agent."""
+        try:
+            # Get the agent from the agent manager
+            agent_type = AgentType(agent_type_str)
+            if agent_type in self.agent_manager.active_agents:
+                agent = self.agent_manager.active_agents[agent_type]
+                await agent.receive_message(message)
+                self.logger.debug(f"Message delivered to {agent_type_str} agent")
+            else:
+                self.logger.error(f"Agent {agent_type_str} not found in active agents")
+        except Exception as e:
+            self.logger.error(f"Failed to deliver message to {agent_type_str}: {e}")
+    
+    async def _dispatch_message(self, message: Message) -> None:
+        """Override base agent dispatch to handle inter-agent communication."""
+        # If the message is for the orchestrator, handle it directly
+        if message.receiver_id == self.agent_id:
+            await self.receive_message(message)
+            return
+        
+        # Find the target agent and deliver message directly
+        for agent_type_str, agent_id in self.agent_registry.items():
+            if agent_id == message.receiver_id:
+                await self._deliver_message_to_agent(agent_type_str, message)
+                return
+        
+        # If we can't find the agent, log an error
+        self.logger.error(f"Could not deliver message to {message.receiver_id}")
+    
+    async def send_message(
+        self,
+        receiver_id: str,
+        message_type: str,
+        content: Dict[str, Any],
+        correlation_id: Optional[str] = None,
+        reply_to: Optional[str] = None
+    ) -> str:
+        """Override send_message to use direct delivery."""
+        message = Message(
+            sender_id=self.agent_id,
+            receiver_id=receiver_id,
+            message_type=message_type,
+            content=content,
+            correlation_id=correlation_id,
+            reply_to=reply_to
+        )
+        
+        await self._dispatch_message(message)
+        self.stats["messages_sent"] += 1
+        
+        return message.id
     
     async def _check_phase_completion(self, session_id: str) -> None:
         """Check if current phase is complete and move to next phase."""

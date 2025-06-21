@@ -10,6 +10,7 @@ This agent:
 
 import asyncio
 import json
+import os
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 
@@ -23,6 +24,34 @@ from ..connectors import (
     create_postgresql_connector,
     create_mysql_connector
 )
+
+
+def resolve_connection_params(source_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Resolve connection parameters using environment variables."""
+    resolved_config = source_config.copy()
+    source_type = source_config.get("type", "unknown")
+    
+    # For MySQL connections, use environment variables if not provided
+    if source_type == "mysql":
+        resolved_config.update({
+            "host": source_config.get("host", os.getenv("MYSQL_HOST", "localhost")),
+            "port": source_config.get("port", int(os.getenv("MYSQL_PORT", "3306"))),
+            "database": source_config.get("database", os.getenv("MYSQL_DATABASE", "")),
+            "username": source_config.get("username", os.getenv("MYSQL_USER", "")),
+            "password": source_config.get("password", os.getenv("MYSQL_PASSWORD", ""))
+        })
+    
+    # For PostgreSQL connections
+    elif source_type in ["postgresql", "postgres"]:
+        resolved_config.update({
+            "host": source_config.get("host", os.getenv("POSTGRES_HOST", "localhost")),
+            "port": source_config.get("port", int(os.getenv("POSTGRES_PORT", "5432"))),
+            "database": source_config.get("database", os.getenv("POSTGRES_DATABASE", "")),
+            "username": source_config.get("username", os.getenv("POSTGRES_USER", "")),
+            "password": source_config.get("password", os.getenv("POSTGRES_PASSWORD", ""))
+        })
+    
+    return resolved_config
 
 
 class DataSourceInfo:
@@ -103,8 +132,11 @@ class DatabaseSourceConnector:
     @staticmethod
     async def connect_and_discover(source_config: Dict[str, Any]) -> DataSourceInfo:
         """Connect to real database and discover structure."""
-        source_type = source_config.get("type", "unknown")
-        source_id = source_config.get("id", f"source_{datetime.now(timezone.utc).timestamp()}")
+        # Resolve connection parameters with environment variables
+        resolved_config = resolve_connection_params(source_config)
+        
+        source_type = resolved_config.get("type", "unknown")
+        source_id = resolved_config.get("id", f"source_{datetime.now(timezone.utc).timestamp()}")
         
         info = DataSourceInfo(
             source_id=source_id,
@@ -117,25 +149,25 @@ class DatabaseSourceConnector:
             connector = None
             
             if source_type == "sqlite":
-                database_path = source_config.get("database", ":memory:")
+                database_path = resolved_config.get("database", ":memory:")
                 connector = create_sqlite_connector(database_path)
             
             elif source_type == "postgresql":
                 connector = create_postgresql_connector(
-                    host=source_config.get("host", "localhost"),
-                    port=source_config.get("port", 5432),
-                    database=source_config.get("database", ""),
-                    username=source_config.get("username", ""),
-                    password=source_config.get("password", "")
+                    host=resolved_config.get("host", "localhost"),
+                    port=resolved_config.get("port", 5432),
+                    database=resolved_config.get("database", ""),
+                    username=resolved_config.get("username", ""),
+                    password=resolved_config.get("password", "")
                 )
             
             elif source_type == "mysql":
                 connector = create_mysql_connector(
-                    host=source_config.get("host", "localhost"),
-                    port=source_config.get("port", 3306),
-                    database=source_config.get("database", ""),
-                    username=source_config.get("username", ""),
-                    password=source_config.get("password", "")
+                    host=resolved_config.get("host", "localhost"),
+                    port=resolved_config.get("port", 3306),
+                    database=resolved_config.get("database", ""),
+                    username=resolved_config.get("username", ""),
+                    password=resolved_config.get("password", "")
                 )
             
             else:
@@ -176,8 +208,11 @@ class DatabaseSourceConnector:
     @staticmethod
     async def analyze_table(source_config: Dict[str, Any], table_name: str) -> TableInfo:
         """Analyze a specific table using real database connection."""
-        source_type = source_config.get("type", "unknown")
-        source_id = source_config.get("id", f"source_{datetime.now(timezone.utc).timestamp()}")
+        # Resolve connection parameters with environment variables
+        resolved_config = resolve_connection_params(source_config)
+        
+        source_type = resolved_config.get("type", "unknown")
+        source_id = resolved_config.get("id", f"source_{datetime.now(timezone.utc).timestamp()}")
         
         table_info = TableInfo(
             table_name=table_name,
@@ -189,25 +224,25 @@ class DatabaseSourceConnector:
             connector = None
             
             if source_type == "sqlite":
-                database_path = source_config.get("database", ":memory:")
+                database_path = resolved_config.get("database", ":memory:")
                 connector = create_sqlite_connector(database_path)
             
             elif source_type == "postgresql":
                 connector = create_postgresql_connector(
-                    host=source_config.get("host", "localhost"),
-                    port=source_config.get("port", 5432),
-                    database=source_config.get("database", ""),
-                    username=source_config.get("username", ""),
-                    password=source_config.get("password", "")
+                    host=resolved_config.get("host", "localhost"),
+                    port=resolved_config.get("port", 5432),
+                    database=resolved_config.get("database", ""),
+                    username=resolved_config.get("username", ""),
+                    password=resolved_config.get("password", "")
                 )
             
             elif source_type == "mysql":
                 connector = create_mysql_connector(
-                    host=source_config.get("host", "localhost"),
-                    port=source_config.get("port", 3306),
-                    database=source_config.get("database", ""),
-                    username=source_config.get("username", ""),
-                    password=source_config.get("password", "")
+                    host=resolved_config.get("host", "localhost"),
+                    port=resolved_config.get("port", 3306),
+                    database=resolved_config.get("database", ""),
+                    username=resolved_config.get("username", ""),
+                    password=resolved_config.get("password", "")
                 )
             
             if connector and await connector.connect():
@@ -589,16 +624,44 @@ class DiscoveryAgent(BaseAgent):
         source_name_lower = source_name.lower()
         
         if "mysql" in source_name_lower:
-            return {"type": "mysql", "id": source_name, "name": source_name}
+            return {
+                "type": "mysql", 
+                "id": source_name, 
+                "name": source_name,
+                # These will be resolved by resolve_connection_params() using env vars
+                "host": "localhost",
+                "port": 3306,
+                "database": "",
+                "username": "",
+                "password": ""
+            }
         elif "snowflake" in source_name_lower:
             return {"type": "snowflake", "id": source_name, "name": source_name}
         elif "postgres" in source_name_lower:
-            return {"type": "postgres", "id": source_name, "name": source_name}
+            return {
+                "type": "postgres", 
+                "id": source_name, 
+                "name": source_name,
+                "host": "localhost",
+                "port": 5432,
+                "database": "",
+                "username": "",
+                "password": ""
+            }
         elif "mongo" in source_name_lower:
             return {"type": "mongodb", "id": source_name, "name": source_name}
         else:
             # Default to MySQL for unknown sources
-            return {"type": "mysql", "id": source_name, "name": source_name}
+            return {
+                "type": "mysql", 
+                "id": source_name, 
+                "name": source_name,
+                "host": "localhost",
+                "port": 3306,
+                "database": "",
+                "username": "",
+                "password": ""
+            }
     
     async def _discover_source(self, source_config: Dict[str, Any]) -> DataSourceInfo:
         """Discover a data source."""

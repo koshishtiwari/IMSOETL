@@ -13,6 +13,8 @@ import asyncio
 import logging
 from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
+
+from ..core.base_agent import BaseAgent, AgentType, Message
 import statistics
 import re
 
@@ -102,6 +104,47 @@ class QualityAgent(BaseAgent):
             "validity": 0.90,
             "uniqueness": 0.99
         }
+        
+        # Register message handlers
+        self.register_message_handlers()
+        
+    def register_message_handlers(self) -> None:
+        """Register handlers for different message types."""
+        self.register_message_handler("task_assignment", self.handle_task_assignment)
+        
+    async def handle_task_assignment(self, message: Message) -> None:
+        """Handle task assignment messages."""
+        task = message.content.get("task", {})
+        session_id = message.content.get("session_id")
+        
+        self.logger.info(f"Received task assignment: {task.get('task_type')} (ID: {task.get('task_id')})")
+        
+        try:
+            # Process the task
+            result = await self.process_task(task)
+            
+            # Send response back to orchestrator
+            await self.send_message(
+                receiver_id=message.sender_id,
+                message_type="task_complete",
+                content={
+                    "session_id": session_id,
+                    "task_id": task.get("task_id"),
+                    "result": result
+                }
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Task processing failed: {e}")
+            await self.send_message(
+                receiver_id=message.sender_id,
+                message_type="task_error",
+                content={
+                    "session_id": session_id,
+                    "task_id": task.get("task_id"),
+                    "error": str(e)
+                }
+            )
         
     async def initialize(self):
         """Initialize the quality agent."""
