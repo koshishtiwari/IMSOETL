@@ -1244,6 +1244,67 @@ def list_engines(
     asyncio.run(check_engines())
 
 
+@app.command()
+def health(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging")
+) -> None:
+    """Run comprehensive health check of IMSOETL installation."""
+    setup_logging(verbose)
+    
+    console.print(Panel.fit(
+        "[bold blue]IMSOETL Health Check[/bold blue]",
+        title="🏥 System Diagnostics"
+    ))
+    
+    # Import and run the health check
+    import subprocess
+    import sys
+    
+    try:
+        # Run the production health check script
+        result = subprocess.run([
+            sys.executable, 
+            Path(__file__).parent.parent.parent / "production_health_check.py"
+        ], capture_output=True, text=True)
+        
+        console.print(result.stdout)
+        if result.stderr:
+            console.print(f"[red]Errors:[/red] {result.stderr}")
+            
+        if result.returncode == 0:
+            console.print("[green]✅ System is healthy and ready for production![/green]")
+        elif result.returncode == 1:
+            console.print("[yellow]⚠️ System is mostly functional with minor issues[/yellow]")
+        else:
+            console.print("[red]❌ System has significant issues requiring attention[/red]")
+            
+    except Exception as e:
+        console.print(f"[red]Health check failed: {e}[/red]")
+        raise typer.Exit(1)
+
+@app.command()
+def version() -> None:
+    """Show IMSOETL version information."""
+    try:
+        from . import __version__
+        console.print(f"[bold green]IMSOETL version: {__version__}[/bold green]")
+        
+        # Show key component versions
+        console.print("\n[bold]Key Dependencies:[/bold]")
+        deps = ["pandas", "duckdb", "fastapi", "pydantic"]
+        
+        for dep in deps:
+            try:
+                module = __import__(dep)
+                version = getattr(module, "__version__", "unknown")
+                console.print(f"  {dep}: {version}")
+            except ImportError:
+                console.print(f"  {dep}: [red]not installed[/red]")
+                
+    except Exception as e:
+        console.print(f"[red]Error getting version: {e}[/red]")
+
+@app.command()
 def main() -> None:
     """Main CLI entry point."""
     app()

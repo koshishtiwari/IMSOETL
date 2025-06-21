@@ -48,6 +48,39 @@ env/
 ._*
 .Spotlight-V100
 .Trashes
+
+# Development and temporary files
+*.tmp
+*.temp
+*.log
+demo_*.py
+test_*.py
+*_demo.py
+*_test.py
+comprehensive_demo.py
+fix_*.py
+summary.py
+quick_test.py
+demo_report.json
+sample_*.yaml
+PIPELINE_EXECUTION_SUMMARY.md
+
+# Temporary data directories
+demo_data/
+data/
+output/
+tmp/
+htmlcov/
+
+# Testing artifacts
+.pytest_cache/
+.coverage
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter
+.ipynb_checkpoints
 ehthumbs.db
 Thumbs.db
 

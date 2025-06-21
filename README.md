@@ -1,96 +1,10 @@
-# IMSOETL: I'm so ETL 🤖
+# I'm so ETL
 
 **Agentic Data Engineering Platform with AI-Powered ETL Pipelines**
 
 IMSOETL is an intelligent data engineering platform that uses AI agents to autonomously discover, design, execute, and maintain data pipelines through natural language interfaces and intelligent orchestration.
 
-## 🚀 New: LLM Integration
-
-IMSOETL now features **local-first AI** with fallback to cloud providers:
-
-### 🏠 Local AI (Primary)
-- **Ollama** with **Gemma3:4b** model for completely local inference
-- No API costs, full privacy, always available
-- Multimodal capabilities for advanced data understanding
-
-### ☁️ Cloud AI (Fallback)  
-- **Google Gemini API** for complex scenarios
-- Automatic failover when local AI is unavailable
-- Enterprise-grade performance and reliability
-
-### 🧠 AI-Enhanced Features
-- **Natural Language Intent Parsing**: Convert plain English to structured ETL plans
-- **SQL Generation**: Automatically generate optimized SQL from requirements
-- **Data Quality Suggestions**: AI-powered recommendations for data validation
-- **Schema Mapping**: Intelligent field mapping between source and target
-- **Code Optimization**: AI-enhanced SQL and transformation optimization
-
-## 🏗️ Core Architecture
-
-### Agent Hierarchy
-Orchestrator Agent (Master)
-├── Discovery Agent
-├── Schema Agent  
-├── Transformation Agent
-├── Quality Agent
-├── Execution Agent
-└── Monitoring Agent
-
-### Workflow Logic
-#### Phase 1: Intent Processing
-
-- User provides natural language requirement
-- Orchestrator Agent parses intent and creates execution plan
-- Breaks down complex requests into atomic tasks
-- Assigns tasks to specialized agents
-
-#### Phase 2: Discovery & Analysis
-
-- Discovery Agent identifies all relevant data sources
-- Schema Agent maps source/target schemas and relationships
-- Quality Agent assesses data quality and identifies issues
-- Agents communicate findings back to Orchestrator
-
-#### Phase 3: Pipeline Design
-
-- Transformation Agent designs transformation logic
-- Execution Agent creates optimal execution plan
-- Quality Agent defines validation rules
-- Orchestrator reviews and approves pipeline design   
-
-#### Phase 4: Execution & Monitoring
-
-- Execution Agent runs the pipeline
-- Monitoring Agent tracks performance and errors
-- Quality Agent validates output data
-- All agents report status to Orchestrator
-
-## 🛠️ Key Comp onents
-1. **Agent Communication Layer (A2A)**
-
-- Standardized message protocol between agents
-- Event-driven architecture for real-time coordination
-- Shared context and state management
-
-2. **MCP Integration Layer**
-
-- Unified connectors for databases, APIs, file systems
-- Protocol abstraction for different data sources
-- Authentication and security management
-
-3. **Natural Language Interface**
-
-- Intent recognition and parsing
-- Context understanding for complex requirements
-- Feedback loop for clarification
-
-4. **Pipeline Engine**
-
-- Code generation for actual ETL processes
-- Support for multiple execution environments (Spark, Airflow, etc.)
-- Version control and rollback capabilities
-
-## 🎯 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Python 3.11+
@@ -154,7 +68,15 @@ imsoetl validate --table customers --checks email,phone
 imsoetl demo
 ```
 
-## 📚 Sample Workflow
+### Features
+- **Natural Language Intent Parsing**: Convert plain English to structured ETL plans
+- **SQL Generation**: Automatically generate optimized SQL from requirements
+- **Data Quality Suggestions**: AI-powered recommendations for data validation
+- **Schema Mapping**: Intelligent field mapping between source and target
+- **Code Optimization**: AI-enhanced SQL and transformation optimization
+
+
+## Sample Workflow
 
 **User Input:** "Move last 30 days of customer orders from MySQL to PostgreSQL, clean the phone numbers, and create a daily summary table"
 
@@ -189,7 +111,7 @@ imsoetl demo
    - Sets up real-time alerts and performance tracking
    - AI-powered anomaly detection
 
-## 🔧 Configuration
+## Configuration
 
 ### LLM Configuration (config/default.yaml)
 ```yaml
@@ -206,7 +128,7 @@ llm:
     api_key: "${GEMINI_API_KEY}"
 ```
 
-## 🧪 Examples
+## Examples
 
 ### Natural Language to ETL Pipeline
 ```python
